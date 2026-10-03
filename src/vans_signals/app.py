@@ -8,6 +8,7 @@ from datetime import datetime
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from vans_signals.slack import slack_message
 from vans_signals.store import Signal, SignalStore
 
 
@@ -46,13 +47,6 @@ def service_named_by_token(presented: str, tokens: Mapping[str, str]) -> str | N
     return named
 
 
-def slack_text(signal: Signal) -> str:
-    when = signal.log_time.isoformat(
-        timespec="seconds" if signal.log_time.microsecond == 0 else "microseconds"
-    )
-    return f"{when} {signal.logger_name} {signal.level} {signal.message}"
-
-
 def create_app(
     *,
     database_url: str,
@@ -67,7 +61,7 @@ def create_app(
         for delay in (1, 2, 4):
             await sleep(delay)
             try:
-                await slack.post(slack_text(signal))
+                await slack.post(slack_message(signal))
             except Exception:
                 continue
             return

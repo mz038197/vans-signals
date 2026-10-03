@@ -21,9 +21,28 @@ STORED_SIGNAL = {
     "message": "upstream openrouter did not update",
     "source": "vans-coding-router",
 }
-SLACK_TEXT = (
-    "2026-10-03T03:37:00+00:00 src.jobs.catalog ERROR upstream openrouter did not update"
-)
+SLACK_MESSAGE = {
+    "text": "ERROR · src.jobs.catalog · upstream openrouter did not update",
+    "blocks": [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "ERROR", "emoji": False},
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "upstream openrouter did not update"},
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": "*Time*\n2026-10-03 03:37:00 +00:00"},
+                {"type": "mrkdwn", "text": "*Logger*\nsrc.jobs.catalog"},
+                {"type": "mrkdwn", "text": "*Source*\nvans-coding-router"},
+            ],
+        },
+    ],
+}
 
 
 async def _settle() -> None:
@@ -53,7 +72,7 @@ async def test_log_time_without_a_timezone_is_rejected(client, database_url, sla
 
     assert response.status_code == 422
     assert read_signals(database_url) == []
-    assert slack.texts == []
+    assert slack.messages == []
     assert sleeper.delays == []
 
 
@@ -63,7 +82,7 @@ async def test_missing_token_is_rejected_and_stores_nothing(client, database_url
 
     assert response.status_code == 401
     assert read_signals(database_url) == []
-    assert slack.texts == []
+    assert slack.messages == []
     assert sleeper.delays == []
 
 
@@ -77,7 +96,7 @@ async def test_unknown_token_is_rejected_and_stores_nothing(client, database_url
 
     assert response.status_code == 401
     assert read_signals(database_url) == []
-    assert slack.texts == []
+    assert slack.messages == []
     assert sleeper.delays == []
 
 
@@ -91,7 +110,7 @@ async def test_mismatched_source_is_rejected_and_stores_nothing(client, database
 
     assert response.status_code == 403
     assert read_signals(database_url) == []
-    assert slack.texts == []
+    assert slack.messages == []
     assert sleeper.delays == []
 
 
@@ -112,7 +131,7 @@ async def test_router_token_stores_the_signal_and_returns_before_slack(
 
     assert response.status_code == 200
     assert sleeper.delays == [1]
-    assert slack.texts == []
+    assert slack.messages == []
     assert read_signals(database_url) == [STORED_SIGNAL]
     assert signal_columns(database_url) == {
         "id",
@@ -141,11 +160,11 @@ async def test_slack_failures_are_spaced_one_then_two_then_four_seconds_and_leav
         json=signal_body(),
     )
     stored_at_response = read_signals(database_url)
-    await _wait_until(lambda: len(slack.texts) >= 3)
+    await _wait_until(lambda: len(slack.messages) >= 3)
 
     assert response.status_code == 200
     assert sleeper.delays == [1.0, 2.0, 4.0]
-    assert slack.texts == [SLACK_TEXT, SLACK_TEXT, SLACK_TEXT]
+    assert slack.messages == [SLACK_MESSAGE, SLACK_MESSAGE, SLACK_MESSAGE]
     assert stored_at_response == [STORED_SIGNAL]
     assert read_signals(database_url) == [STORED_SIGNAL]
 
@@ -158,12 +177,12 @@ async def test_slack_success_does_not_post_again(client, slack, sleeper):
         headers={"Authorization": f"Bearer {ROUTER_TOKEN}"},
         json=signal_body(),
     )
-    await _wait_until(lambda: len(slack.texts) >= 1)
+    await _wait_until(lambda: len(slack.messages) >= 1)
     await _settle()
 
     assert response.status_code == 200
     assert sleeper.delays == [1.0]
-    assert slack.texts == [SLACK_TEXT]
+    assert slack.messages == [SLACK_MESSAGE]
 
 
 async def test_restart_during_slack_tries_does_not_send_the_stored_signal(database_url):
@@ -186,7 +205,7 @@ async def test_restart_during_slack_tries_does_not_send_the_stored_signal(databa
             )
             await _wait_until(lambda: sleeper.delays == [1.0])
             assert response.status_code == 200
-            assert slack.texts == []
+            assert slack.messages == []
 
     restarted_slack = RecordingSlack(fail=False)
     restarted_sleeper = RecordingSleeper()
@@ -199,5 +218,5 @@ async def test_restart_during_slack_tries_does_not_send_the_stored_signal(databa
     async with restarted.router.lifespan_context(restarted):
         await _settle()
         assert restarted_sleeper.delays == []
-        assert restarted_slack.texts == []
+        assert restarted_slack.messages == []
         assert read_signals(database_url) == [STORED_SIGNAL]

@@ -13,11 +13,11 @@ DATABASE_URL = "postgresql://signals:signals@127.0.0.1:55432/signals"
 
 class RecordingSlack:
     def __init__(self, *, fail: bool = True):
-        self.texts: list[str] = []
+        self.messages: list[dict] = []
         self.fail = fail
 
-    async def post(self, text: str) -> None:
-        self.texts.append(text)
+    async def post(self, message: dict) -> None:
+        self.messages.append(message)
         if self.fail:
             raise RuntimeError("slack rejected the webhook")
 
