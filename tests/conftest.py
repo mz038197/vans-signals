@@ -1,0 +1,139 @@
+import asyncio
+from datetime import timezone
+
+import httpx
+import psycopg
+import pytest
+from psycopg.rows import dict_row
+
+ROUTER_TOKEN = "router-production-token"
+ROUTER_SOURCE = "vans-coding-router"
+DATABASE_URL = "postgresql://signals:signals@127.0.0.1:55432/signals"
+
+
+class RecordingSlack:
+    def __init__(self, *, fail: bool = True):
+        self.texts: list[str] = []
+        self.fail = fail
+        self.entered = asyncio.Event()
+        self._release = asyncio.Event()
+        self.block = False
+
+    async def post(self, text: str) -> None:
+        self.texts.append(text)
+        self.entered.set()
+        if self.block:
+            await self._release.wait()
+            self._release.clear()
+        if self.fail:
+            raise RuntimeError("slack rejected the webhook")
+
+    def allow(self) -> None:
+        self._release.set()
+
+
+class RecordingSleeper:
+    def __init__(self, *, pause: bool = False):
+        self.delays: list[float] = []
+        self.pause = pause
+        self.waiting = asyncio.Event()
+        self._release = asyncio.Event()
+
+    async def __call__(self, seconds: float) -> None:
+        self.delays.append(float(seconds))
+        if not self.pause:
+            await asyncio.sleep(0)
+            return
+        self.waiting.set()
+        await self._release.wait()
+        self._release.clear()
+        self.waiting.clear()
+
+    def allow(self) -> None:
+        self._release.set()
+
+
+def signal_body(**overrides) -> dict:
+    body = {
+        "log_time": "2026-10-03T03:37:00Z",
+        "logger_name": "src.jobs.catalog",
+        "level": "ERROR",
+        "message": "upstream openrouter did not update",
+        "source": ROUTER_SOURCE,
+    }
+    body.update(overrides)
+    return body
+
+
+def read_signals(database_url: str) -> list[dict]:
+    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT log_time, logger_name, level, message, source
+            FROM signals
+            ORDER BY id
+            """
+        ).fetchall()
+    stored = []
+    for row in rows:
+        log_time = row["log_time"].astimezone(timezone.utc).isoformat(timespec="seconds")
+        stored.append(
+            {
+                "log_time": log_time,
+                "logger_name": row["logger_name"],
+                "level": row["level"],
+                "message": row["message"],
+                "source": row["source"],
+            }
+        )
+    return stored
+
+
+def signal_columns(database_url: str) -> set[str]:
+    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+        rows = conn.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'signals'
+            """
+        ).fetchall()
+    return {row["column_name"] for row in rows}
+
+
+@pytest.fixture
+def database_url() -> str:
+    return DATABASE_URL
+
+
+@pytest.fixture
+def slack() -> RecordingSlack:
+    return RecordingSlack()
+
+
+@pytest.fixture
+def sleeper() -> RecordingSleeper:
+    return RecordingSleeper()
+
+
+@pytest.fixture
+async def client(database_url, slack, sleeper):
+    from vans_signals.app import create_app
+
+    app = create_app(
+        database_url=database_url,
+        tokens={ROUTER_TOKEN: ROUTER_SOURCE},
+        slack=slack,
+        sleep=sleeper,
+    )
+    async with app.router.lifespan_context(app):
+        await asyncio.to_thread(truncate_signals, database_url)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://signals", timeout=1.0) as http:
+            yield http
+
+
+def truncate_signals(database_url: str) -> None:
+    with psycopg.connect(database_url) as conn:
+        conn.execute("TRUNCATE signals RESTART IDENTITY")
+        conn.commit()

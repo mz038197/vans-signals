@@ -1,0 +1,3 @@
+# A Signal is an immutable row, and Slack is tried after it is stored
+
+The operator needs a production error to remain even when Slack is down, and vans-signals must not guess which stored rows Slack already showed. A Signal is inserted and the caller is told success before Slack is contacted. Slack is then tried three times, waiting 1 second, then 2 seconds, then 4 seconds. The row has no field for whether Slack accepted it. If the process stops during those tries, startup does not read stored Signals to send them. The service is its own Fly app and its own Neon database, separate from the classroom database. The router token and the Slack webhook URL are Fly secrets.
