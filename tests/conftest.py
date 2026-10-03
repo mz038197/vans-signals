@@ -15,42 +15,24 @@ class RecordingSlack:
     def __init__(self, *, fail: bool = True):
         self.texts: list[str] = []
         self.fail = fail
-        self.entered = asyncio.Event()
-        self._release = asyncio.Event()
-        self.block = False
 
     async def post(self, text: str) -> None:
         self.texts.append(text)
-        self.entered.set()
-        if self.block:
-            await self._release.wait()
-            self._release.clear()
         if self.fail:
             raise RuntimeError("slack rejected the webhook")
-
-    def allow(self) -> None:
-        self._release.set()
 
 
 class RecordingSleeper:
     def __init__(self, *, pause: bool = False):
         self.delays: list[float] = []
         self.pause = pause
-        self.waiting = asyncio.Event()
-        self._release = asyncio.Event()
 
     async def __call__(self, seconds: float) -> None:
         self.delays.append(float(seconds))
-        if not self.pause:
-            await asyncio.sleep(0)
+        if self.pause:
+            await asyncio.Event().wait()
             return
-        self.waiting.set()
-        await self._release.wait()
-        self._release.clear()
-        self.waiting.clear()
-
-    def allow(self) -> None:
-        self._release.set()
+        await asyncio.sleep(0)
 
 
 def signal_body(**overrides) -> dict:
