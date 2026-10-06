@@ -64,12 +64,7 @@ def service_named_by_token(presented: str, tokens: Mapping[str, str]) -> str | N
     presented_digest = hashlib.sha256(presented.encode("utf-8")).digest()
     named = None
     for stored_hex, service in tokens.items():
-        try:
-            expected = bytes.fromhex(stored_hex)
-        except ValueError:
-            continue
-        if len(expected) != 32:
-            continue
+        expected = bytes.fromhex(stored_hex)
         if hmac.compare_digest(presented_digest, expected):
             named = service
     return named
@@ -82,6 +77,7 @@ def create_app(
     slack,
     sleep: Callable[[float], Awaitable[None]],
 ) -> FastAPI:
+    tokens = load_signals_tokens(json.dumps(dict(tokens)))
     store = SignalStore(database_url)
     deliveries: set[asyncio.Task] = set()
 

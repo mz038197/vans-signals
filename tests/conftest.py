@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import os
 from datetime import timezone
 
@@ -117,11 +118,11 @@ def sleeper() -> RecordingSleeper:
 
 @pytest.fixture
 async def client(database_url, slack, sleeper):
-    from vans_signals.app import create_app
+    from vans_signals.app import create_app, load_signals_tokens
 
     app = create_app(
         database_url=database_url,
-        tokens=SIGNALS_TOKENS,
+        tokens=load_signals_tokens(json.dumps(SIGNALS_TOKENS)),
         slack=slack,
         sleep=sleeper,
     )
