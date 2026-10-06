@@ -1,10 +1,17 @@
 import asyncio
+import json
+from pathlib import Path
 
 import httpx
+import pytest
 
 from tests.conftest import (
+    MCP_SOURCE,
+    MCP_TOKEN,
+    ROUTER_ROTATED_TOKEN,
     ROUTER_SOURCE,
     ROUTER_TOKEN,
+    SIGNALS_TOKENS,
     RecordingSlack,
     RecordingSleeper,
     read_signals,
@@ -12,7 +19,7 @@ from tests.conftest import (
     signal_columns,
     truncate_signals,
 )
-from vans_signals.app import create_app
+from vans_signals.app import create_app, load_signals_tokens
 
 STORED_SIGNAL = {
     "log_time": "2026-10-03T03:37:00+00:00",
@@ -190,7 +197,7 @@ async def test_restart_during_slack_tries_does_not_send_the_stored_signal(databa
     slack = RecordingSlack()
     app = create_app(
         database_url=database_url,
-        tokens={ROUTER_TOKEN: ROUTER_SOURCE},
+        tokens=SIGNALS_TOKENS,
         slack=slack,
         sleep=sleeper,
     )
@@ -211,7 +218,7 @@ async def test_restart_during_slack_tries_does_not_send_the_stored_signal(databa
     restarted_sleeper = RecordingSleeper()
     restarted = create_app(
         database_url=database_url,
-        tokens={ROUTER_TOKEN: ROUTER_SOURCE},
+        tokens=SIGNALS_TOKENS,
         slack=restarted_slack,
         sleep=restarted_sleeper,
     )
@@ -220,3 +227,89 @@ async def test_restart_during_slack_tries_does_not_send_the_stored_signal(databa
         assert restarted_sleeper.delays == []
         assert restarted_slack.messages == []
         assert read_signals(database_url) == [STORED_SIGNAL]
+
+
+EXAMPLE_BODY = Path("docs/signal-body.example.json")
+
+
+def test_missing_tokens_secret_refuses_to_start():
+    with pytest.raises(ValueError, match="SIGNALS_TOKENS"):
+        load_signals_tokens(None)
+
+
+def test_invalid_tokens_pair_refuses_to_start():
+    with pytest.raises(ValueError, match="SIGNALS_TOKENS"):
+        load_signals_tokens('{"not-a-hash": "vans-coding-router"}')
+    with pytest.raises(ValueError, match="SIGNALS_TOKENS"):
+        load_signals_tokens("{}")
+
+
+def test_one_valid_pair_is_enough_to_start():
+    one_hash, service = next(iter(SIGNALS_TOKENS.items()))
+    tokens = load_signals_tokens(json.dumps({one_hash: service}))
+    assert tokens == {one_hash: service}
+
+
+async def test_second_service_token_stores_that_source(client, database_url, slack, sleeper):
+    slack.fail = False
+    response = await client.post(
+        "/signals",
+        headers={"Authorization": f"Bearer {MCP_TOKEN}"},
+        json=signal_body(source=MCP_SOURCE),
+    )
+    await _wait_until(lambda: len(slack.messages) >= 1)
+
+    assert response.status_code == 200
+    stored = read_signals(database_url)
+    assert stored == [
+        {
+            **STORED_SIGNAL,
+            "source": MCP_SOURCE,
+        }
+    ]
+    assert slack.messages[0]["blocks"][3]["fields"][2]["text"] == f"*Source*\n{MCP_SOURCE}"
+    assert sleeper.delays == [1.0]
+
+
+async def test_rotated_hash_for_the_same_service_is_accepted(client, database_url, slack):
+    slack.fail = False
+    response = await client.post(
+        "/signals",
+        headers={"Authorization": f"Bearer {ROUTER_ROTATED_TOKEN}"},
+        json=signal_body(),
+    )
+    await _wait_until(lambda: len(slack.messages) >= 1)
+
+    assert response.status_code == 200
+    assert read_signals(database_url) == [STORED_SIGNAL]
+
+
+async def test_level_is_stored_as_posted(client, database_url, slack):
+    slack.fail = False
+    response = await client.post(
+        "/signals",
+        headers={"Authorization": f"Bearer {ROUTER_TOKEN}"},
+        json=signal_body(level="WARNING"),
+    )
+    await _wait_until(lambda: len(slack.messages) >= 1)
+
+    assert response.status_code == 200
+    assert read_signals(database_url)[0]["level"] == "WARNING"
+
+
+async def test_canonical_example_body_is_accepted(client, database_url, slack):
+    slack.fail = False
+    example = json.loads(EXAMPLE_BODY.read_text())
+    response = await client.post(
+        "/signals",
+        headers={"Authorization": f"Bearer {ROUTER_TOKEN}"},
+        json=example,
+    )
+    await _wait_until(lambda: len(slack.messages) >= 1)
+
+    assert response.status_code == 200
+    stored = read_signals(database_url)
+    assert stored[0]["logger_name"] == example["logger_name"]
+    assert stored[0]["level"] == example["level"]
+    assert stored[0]["message"] == example["message"]
+    assert stored[0]["source"] == example["source"]

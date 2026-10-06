@@ -1,11 +1,8 @@
-# Fly secrets: SIGNALS_ROUTER_TOKEN, SLACK_WEBHOOK_URL, DATABASE_URL
+# Fly secrets: SIGNALS_TOKENS, SLACK_WEBHOOK_URL, DATABASE_URL
 app = 'vans-signals'
 primary_region = 'sin'
 
 [build]
-
-[env]
-  SIGNALS_ROUTER_SOURCE = 'vans-coding-router'
 
 [http_service]
   internal_port = 8080

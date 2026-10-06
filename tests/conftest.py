@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import os
 from datetime import timezone
 
 import httpx
@@ -6,9 +8,24 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+
+def token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 ROUTER_TOKEN = "router-production-token"
+ROUTER_ROTATED_TOKEN = "router-rotated-token"
+MCP_TOKEN = "mcp-production-token"
 ROUTER_SOURCE = "vans-coding-router"
-DATABASE_URL = "postgresql://signals:signals@127.0.0.1:55432/signals"
+MCP_SOURCE = "vans-mcp-server"
+SIGNALS_TOKENS = {
+    token_hash(ROUTER_TOKEN): ROUTER_SOURCE,
+    token_hash(ROUTER_ROTATED_TOKEN): ROUTER_SOURCE,
+    token_hash(MCP_TOKEN): MCP_SOURCE,
+}
+DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or (
+    "postgresql://signals:signals@127.0.0.1:55432/signals"
+)
 
 
 class RecordingSlack:
@@ -104,7 +121,7 @@ async def client(database_url, slack, sleeper):
 
     app = create_app(
         database_url=database_url,
-        tokens={ROUTER_TOKEN: ROUTER_SOURCE},
+        tokens=SIGNALS_TOKENS,
         slack=slack,
         sleep=sleeper,
     )
