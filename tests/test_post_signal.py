@@ -9,7 +9,6 @@ from tests.conftest import (
     MCP_SOURCE,
     MCP_TOKEN,
     ROUTER_ROTATED_TOKEN,
-    ROUTER_SOURCE,
     ROUTER_TOKEN,
     SIGNALS_TOKENS,
     RecordingSlack,
