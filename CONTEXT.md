@@ -13,7 +13,7 @@ When the calling service emitted the log. It is stored as that instant and shown
 _Avoid_: The time Slack was contacted, a vans-signals receipt time
 
 **Signal store**:
-The database `vans_signals` in the Neon project VCRouter-db. The role this service uses can connect to that database and cannot connect to `neondb`. CONNECT is revoked from the public, and the role is not a superuser. Acceptance is a connection to `neondb` with that role being refused.
+The database `vans_signals` in the Neon project VCRouter-db. The role is `vans_signals_app`. It can connect to that database and cannot connect to `neondb`. This role goes live before the MCP services change how they check a Classroom API Key, and before their tables move. That step does not take `neondb` away from `neondb_owner`. CONNECT is revoked from the public, and the role is not a superuser. Acceptance is a connection to `neondb` with that role being refused.
 _Avoid_: the router's `neondb`, the shared owner role `neondb_owner`, a second role name that can still connect
 
 **Source**:
