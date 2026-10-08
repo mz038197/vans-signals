@@ -8,7 +8,7 @@
 | `SLACK_WEBHOOK_URL` | Slack 私訊 |
 | `DATABASE_URL` | Neon 專案 `VCRouter-db` 的 database `vans_signals` |
 
-`DATABASE_URL` 現在和 router 一樣用 role `neondb_owner`，所以這組連線也打得開 `neondb`。規格 4 改成 role `vans_signals_app`：只能連 `vans_signals`，不能連 `neondb`。
+`DATABASE_URL` 現在和 router 一樣用 role `neondb_owner`，所以這組連線也打得開 `neondb`。規格 4 改成 role `vans_signals_app`：在 `vans_signals` 的 `public` 可以建物件、讀和寫；只能連這個 database，不能連 `neondb`，也不是 superuser。
 
 連不上不能只靠 role 的名字。Neon 可能把 `CONNECT` 開給 `PUBLIC`，在 console 建的 role 也可能屬於 `neon_superuser`。要對 `PUBLIC` `REVOKE CONNECT`，這個 role 不能是 superuser，再 `GRANT CONNECT` 給 `vans_signals_app`。
 
