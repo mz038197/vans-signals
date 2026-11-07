@@ -13,5 +13,5 @@ When the calling service emitted the log. It is stored as that instant and shown
 _Avoid_: The time Slack was contacted, a vans-signals receipt time
 
 **Source**:
-The service named by the caller's bearer token. Each calling service has its own token. The production tokens name `vans-coding-router`, `vans-mcp-server`, and `pokemon-world-mcp`.
+The service named by the caller's bearer token. Each calling service has its own token. The production tokens name `vans-coding-router`, `vans-mcp-server`, `pokemon-world-mcp`, and `road-test`.
 _Avoid_: A body field the caller can set to a different service, a teacher, a student, one shared token for every service
